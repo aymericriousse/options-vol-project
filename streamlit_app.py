@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.io as pio
 import streamlit as st
 
 from src import black_scholes as bs
@@ -17,11 +18,77 @@ import src.backtest as backtest
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="SPY Volatility Lab", page_icon="📈", layout="wide")
-st.title("SPY Volatility Lab")
-st.caption("Pricing d'options, surface de volatilité et trading de volatilité sur SPY · Aymeric Riousse")
+
+# =============================================================
+# Style "terminal de marché"
+# =============================================================
+AMBER, CYAN, GREEN, RED, GREY = "#FFA028", "#4FC3F7", "#3DDC84", "#FF5252", "#8B949E"
+GRID = "#1E242C"
+
+# Thème des graphiques Plotly : fond noir, police monospace, couleurs vives
+pio.templates["terminal"] = go.layout.Template(layout=dict(
+    paper_bgcolor="#000000", plot_bgcolor="#000000",
+    font=dict(family="Consolas, 'Courier New', monospace", color="#D0D0D0", size=12),
+    title=dict(font=dict(color=AMBER, size=14)),
+    colorway=[AMBER, CYAN, GREEN, RED, "#C792EA", "#FFE082"],
+    xaxis=dict(gridcolor=GRID, zerolinecolor="#3A3F47", linecolor="#3A3F47"),
+    yaxis=dict(gridcolor=GRID, zerolinecolor="#3A3F47", linecolor="#3A3F47"),
+    scene=dict(xaxis=dict(backgroundcolor="#000000", gridcolor=GRID),
+               yaxis=dict(backgroundcolor="#000000", gridcolor=GRID),
+               zaxis=dict(backgroundcolor="#000000", gridcolor=GRID)),
+    legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", yanchor="top", y=-0.2, x=0),
+    margin=dict(l=50, r=20, t=50, b=90),
+))
+pio.templates.default = "plotly_dark+terminal"
+
+
+def show(fig, config=None):
+    """Affiche un graphique avec notre thème (theme=None : Streamlit n'impose pas le sien)."""
+    st.plotly_chart(fig, theme=None, config={"displaylogo": False, **(config or {})})
+
+
+# Mise en forme de la page (CSS)
+st.markdown("""
+<style>
+.block-container {padding-top: 2.5rem; max-width: 1400px;}
+header[data-testid="stHeader"] {background: #000000;}
+h1, h2, h3, h4 {color: #FFA028 !important; text-transform: uppercase; letter-spacing: 0.04em;}
+h3 {font-size: 1.1rem !important; border-bottom: 1px solid #2A2F36; padding-bottom: 0.35rem;}
+h4 {font-size: 0.9rem !important;}
+.term-top {display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.6rem; background: #0A0A0A; border: 1px solid #2A2F36; border-top: 3px solid #FFA028; padding: 0.6rem 1rem;}
+.term-brand {color: #FFA028; font-weight: 700; font-size: 1.2rem; letter-spacing: 0.08em;}
+.term-sub {color: #8B949E; font-size: 0.72rem; font-weight: 400; margin-left: 0.8rem;}
+.term-quotes {display: flex; gap: 1.4rem; flex-wrap: wrap; font-size: 0.85rem; color: #8B949E;}
+.amber {color: #FFA028;}
+.cyan {color: #4FC3F7;}
+.term-author {color: #6E7681; font-size: 0.75rem; margin: 0.35rem 0 1rem 0;}
+.term-footer {color: #6E7681; font-size: 0.7rem; border-top: 1px solid #2A2F36; margin-top: 2rem; padding-top: 0.5rem;}
+.stTabs [data-baseweb="tab-list"] {gap: 4px;}
+.stTabs [data-baseweb="tab"] {background: #111418; border: 1px solid #2A2F36; border-radius: 0; padding: 0.35rem 0.9rem; height: auto;}
+.stTabs [data-baseweb="tab"] p {color: #FFA028; font-weight: 600; letter-spacing: 0.05em;}
+.stTabs [aria-selected="true"] {background: #FFA028; border-color: #FFA028;}
+.stTabs [aria-selected="true"] p {color: #000000 !important;}
+.stTabs [data-baseweb="tab-highlight"] {display: none;}
+[data-testid="stMetric"] {background: #0A0D12; border: 1px solid #2A2F36; border-left: 3px solid #FFA028; padding: 0.6rem 0.9rem;}
+[data-testid="stMetricLabel"] p {color: #8B949E !important; text-transform: uppercase; font-size: 0.72rem !important;}
+</style>
+""", unsafe_allow_html=True)
+
+# Bandeau du haut : nom de l'application et cotations de la photo du marché
+_mkt = pd.read_csv(config.DATA_DIR / f"spy_market_{config.SNAPSHOT_DATE}.csv", index_col=0).iloc[:, 0]
+st.markdown(
+    f'<div class="term-top">'
+    f'<div class="term-brand">SPY VOLATILITY LAB<span class="term-sub">OPTIONS · VOL SURFACE · VOL TRADING</span></div>'
+    f'<div class="term-quotes">'
+    f'<span>SPY <b class="amber">{float(_mkt["spot"]):.2f}</b></span>'
+    f'<span>UST 3M <b class="amber">{float(_mkt["r"]):.2%}</b></span>'
+    f'<span>SNAPSHOT <b class="cyan">{config.SNAPSHOT_DATE}</b></span>'
+    f'</div></div>'
+    f'<div class="term-author">Aymeric Riousse · ECE Paris · Finance quantitative</div>',
+    unsafe_allow_html=True)
 
 tab_pricer, tab_surface, tab_varswap, tab_hedge, tab_backtest = st.tabs(
-    ["Pricer", "Surface de vol", "Variance swap", "Delta-hedging", "Backtest"])
+    ["1 PRICER", "2 SURFACE DE VOL", "3 VARIANCE SWAP", "4 DELTA-HEDGING", "5 BACKTEST"])
 
 # =============================================================
 # Onglet 1 : Pricer
@@ -62,7 +129,7 @@ with tab_pricer:
     fig.add_trace(go.Scatter(x=S_grid, y=payoff, name="Payoff à maturité", line=dict(dash="dash")))
     fig.update_layout(title="Prix de l'option en fonction du spot",
                       xaxis_title="Spot", yaxis_title="Prix", height=420)
-    st.plotly_chart(fig)
+    show(fig)
 
 # =============================================================
 # Chargement des résultats de la photo du marché (une seule fois)
@@ -101,11 +168,11 @@ with tab_surface:
     if st.checkbox("Afficher les points de marché"):
         pts = smiles[smiles["k"].abs() <= 0.3]
         fig3d.add_trace(go.Scatter3d(x=pts["k"], y=pts["T"] * 365, z=pts["iv"] * 100, mode="markers",
-                                     marker=dict(size=2, color="black"), name="Marché"))
+                                     marker=dict(size=2, color="white"), name="Marché"))
     fig3d.update_layout(height=650, margin=dict(l=0, r=0, t=30, b=0),
                         scene=dict(xaxis_title="Log-moneyness k", yaxis_title="Maturité (jours)",
                                    zaxis_title="Vol implicite (%)"))
-    st.plotly_chart(fig3d, config={"scrollZoom": False})
+    show(fig3d, config={"scrollZoom": False})
 
     # Smile d'une maturité choisie
     st.markdown("#### Smile d'une maturité")
@@ -133,7 +200,7 @@ with tab_surface:
     else:
         st.caption("Heston n'est pas affiché : il a été calibré sur les maturités de 30 jours et plus.")
     fig_s.update_layout(xaxis_title="Log-moneyness k = ln(K/F)", yaxis_title="Vol implicite (%)", height=450)
-    st.plotly_chart(fig_s)
+    show(fig_s)
 
 
 # =============================================================
@@ -207,7 +274,7 @@ with tab_varswap:
     fig_vs.add_vline(x=30, line_dash="dot", annotation_text="Calibration Heston ≥ 30 j")
     fig_vs.update_layout(title="Strike de variance swap vs vol ATM", xaxis_title="Maturité (jours)",
                          yaxis_title="Volatilité (%)", height=450)
-    st.plotly_chart(fig_vs)
+    show(fig_vs)
 
     with st.expander("Voir le tableau complet"):
         st.dataframe(vt.drop(columns="T").round(2), hide_index=True)
@@ -231,7 +298,7 @@ with tab_varswap:
     fig_c.add_trace(go.Scatter(x=k[k >= 0], y=contrib[k >= 0], fill="tozeroy", name="Calls (strikes au-dessus)"))
     fig_c.update_layout(xaxis_title="Log-moneyness k", yaxis_title="Contribution au strike de variance",
                         height=400)
-    st.plotly_chart(fig_c)
+    show(fig_c)
 
     share_puts = vs.var_swap_strike_svi(T_sel, p_sel, k_max=0.0) / vs.var_swap_strike_svi(T_sel, p_sel)
     st.markdown(f"Pour cette maturité, les **puts** représentent **{share_puts:.0%}** du prix du variance swap. "
@@ -276,12 +343,12 @@ with tab_hedge:
     m[3].metric("Trajectoires gagnantes", f"{(pnl > 0).mean():.0%}")
 
     fig_h = go.Figure(go.Histogram(x=pnl, nbinsx=80))
-    fig_h.add_vline(x=0, line_color="black")
+    fig_h.add_vline(x=0, line_color=GREY)
     fig_h.add_vline(x=pnl.mean(), line_dash="dash", annotation_text="Moyenne")
     fig_h.update_layout(title="Distribution du P&L du vendeur couvert (5 000 trajectoires simulées)",
                         xaxis_title="P&L à maturité", yaxis_title="Nombre de trajectoires",
                         height=420, showlegend=False)
-    st.plotly_chart(fig_h)
+    show(fig_h)
 
     if st.checkbox("Vérifier la formule ½·Γ·S²·(σ²_imp − σ²_réalisée)"):
         fig_f = go.Figure(go.Scatter(x=formula, y=pnl, mode="markers",
@@ -291,7 +358,7 @@ with tab_hedge:
                                    name="Égalité parfaite"))
         fig_f.update_layout(xaxis_title="P&L selon la formule du gamma", yaxis_title="P&L réel de la couverture",
                             height=450)
-        st.plotly_chart(fig_f)
+        show(fig_f)
         if cost_bp > 0:
             st.caption("Avec des coûts de transaction, les points passent sous la diagonale : la formule ne les inclut pas.")
 
@@ -339,7 +406,7 @@ with tab_backtest:
     fig_b.add_trace(go.Scatter(x=bt.index, y=bt["straddle_pnl_pct"].cumsum(), name="Straddle",
                                showlegend=False), row=3, col=1)
     fig_b.update_layout(height=850)
-    st.plotly_chart(fig_b)
+    show(fig_b)
 
     st.markdown("#### Les pires mois pour un vendeur de volatilité")
     worst = bt.nsmallest(5, "varswap_pnl")[["vix", "realized", "varswap_pnl", "straddle_pnl_pct"]].copy()
@@ -350,3 +417,9 @@ with tab_backtest:
     st.caption("En février 2020, le straddle perd beaucoup moins que le variance swap : le marché s'est "
                "vite éloigné du strike, là où le gamma est faible. Le P&L du straddle est pondéré par le gamma, "
                "celui du variance swap ne l'est pas.")
+
+# =============================================================
+# Pied de page
+# =============================================================
+st.markdown(f'<div class="term-footer">DATA : YAHOO FINANCE (≈ 15 MIN DE DÉCALAGE) · SNAPSHOT {config.SNAPSHOT_DATE} · '
+            f'PROJET PÉDAGOGIQUE, PAS UN CONSEIL EN INVESTISSEMENT</div>', unsafe_allow_html=True)
