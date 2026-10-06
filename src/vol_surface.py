@@ -40,4 +40,5 @@ def compute_smiles(chain, S0, r):
                 "iv": vol, "iv_yahoo": row["impliedVolatility"],
             })
 
-    return pd.DataFrame(rows).dropna(subset=["iv"])
+        smiles = pd.DataFrame(rows).dropna(subset=["iv"])
+    return smiles.sort_values(["expiry", "k"]).reset_index(drop=True)
