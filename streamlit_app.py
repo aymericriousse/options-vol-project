@@ -105,7 +105,7 @@ with tab_surface:
     fig3d.update_layout(height=650, margin=dict(l=0, r=0, t=30, b=0),
                         scene=dict(xaxis_title="Log-moneyness k", yaxis_title="Maturité (jours)",
                                    zaxis_title="Vol implicite (%)"))
-    st.plotly_chart(fig3d)
+    st.plotly_chart(fig3d, config={"scrollZoom": False})
 
     # Smile d'une maturité choisie
     st.markdown("#### Smile d'une maturité")
@@ -122,10 +122,14 @@ with tab_surface:
     fig_s.add_trace(go.Scatter(x=k_fine, y=svi.svi_implied_vol(k_fine, T_sel, p_sel) * 100, name="SVI"))
     if T_sel >= 30 / 365:
         F = s["F"].iloc[0]
-        prices = heston.heston_call(F, F * np.exp(k_fine), T_sel, r_mkt,
+        # Heston affiché uniquement sur sa zone de calibration
+        atm_sel = svi.svi_implied_vol(0.0, T_sel, p_sel)
+        k_h = np.linspace(-2.5 * atm_sel * np.sqrt(T_sel), 1.5 * atm_sel * np.sqrt(T_sel), 60)
+        prices = heston.heston_call(F, F * np.exp(k_h), T_sel, r_mkt,
                                     hp["v0"], hp["kappa"], hp["theta"], hp["xi"], hp["rho"])
-        iv_h = [implied_vol(pr, F, F * np.exp(kk), T_sel, r_mkt, "call", q=r_mkt) for pr, kk in zip(prices, k_fine)]
-        fig_s.add_trace(go.Scatter(x=k_fine, y=np.array(iv_h) * 100, name="Heston", line=dict(dash="dash")))
+        iv_h = [implied_vol(pr, F, F * np.exp(kk), T_sel, r_mkt, "call", q=r_mkt) for pr, kk in zip(prices, k_h)]
+        fig_s.add_trace(go.Scatter(x=k_h, y=np.array(iv_h) * 100, name="Heston (zone de calibration)",
+                                   line=dict(dash="dash")))
     else:
         st.caption("Heston n'est pas affiché : il a été calibré sur les maturités de 30 jours et plus.")
     fig_s.update_layout(xaxis_title="Log-moneyness k = ln(K/F)", yaxis_title="Vol implicite (%)", height=450)
@@ -191,7 +195,8 @@ with tab_varswap:
     c[0].metric("Mon VIX (reconstruit sur SPY)", f"{my_vix:.2f}")
     c[1].metric("VIX officiel", f"{off:.2f}" if off else "indisponible",
                 delta=f"{my_vix - off:+.2f} d'écart" if off else None, delta_color="off")
-    c[2].metric("Prime de skew à 1 an", f"{one_year['VS marché'] - one_year['Vol ATM']:.1f} pts de vol")
+    c[2].metric(f"Prime de skew ({one_year['Jours']} jours)",
+                f"{one_year['VS marché'] - one_year['Vol ATM']:.1f} pts de vol")
 
     # Structure par terme
     fig_vs = go.Figure()
