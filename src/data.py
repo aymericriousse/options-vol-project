@@ -1,5 +1,6 @@
 import pandas as pd
 import yfinance as yf
+from .config import DATA_DIR
 
 
 def get_spot(ticker="SPY"):
@@ -44,3 +45,39 @@ def clean_chain(df, min_T=7 / 365, max_rel_spread=0.5):
     rel_spread = (df["ask"] - df["bid"]) / df["mid"]
     df = df[rel_spread <= max_rel_spread]                   # on retire les options trop illiquides
     return df.reset_index(drop=True)
+
+def snapshot_paths(date, ticker="SPY"):
+    """Chemins des fichiers d'une photo du marché."""
+    t = ticker.lower()
+    return (DATA_DIR / f"{t}_options_{date}.csv",
+            DATA_DIR / f"{t}_market_{date}.csv",
+            DATA_DIR / f"{t}_options_raw_{date}.csv")
+
+
+def create_snapshot(ticker="SPY"):
+    """Télécharge et sauvegarde une photo du marché du jour. Refuse d'écraser."""
+    date = pd.Timestamp.today().strftime("%Y-%m-%d")
+    opt_path, mkt_path, raw_path = snapshot_paths(date, ticker)
+    if opt_path.exists():
+        raise FileExistsError(f"Une photo du {date} existe déjà ({opt_path.name}).")
+
+    DATA_DIR.mkdir(exist_ok=True)
+    S0, r = get_spot(ticker), get_risk_free_rate()
+    raw = download_option_chain(ticker)
+    clean = clean_chain(raw)
+
+    raw.to_csv(raw_path, index=False)
+    clean.to_csv(opt_path, index=False)
+    pd.Series({"date": date, "spot": S0, "r": r}).to_csv(mkt_path)
+
+    print(f"Photo du {date} créée : spot = {S0:.2f}, r = {r:.2%}, "
+          f"{len(raw)} options brutes, {len(clean)} après nettoyage")
+    return date
+
+
+def load_snapshot(date, ticker="SPY"):
+    """Charge une photo du marché déjà sauvegardée."""
+    opt_path, mkt_path, _ = snapshot_paths(date, ticker)
+    chain = pd.read_csv(opt_path, parse_dates=["expiry"])
+    market = pd.read_csv(mkt_path, index_col=0).iloc[:, 0]
+    return chain, float(market["spot"]), float(market["r"])
