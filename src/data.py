@@ -81,3 +81,19 @@ def load_snapshot(date, ticker="SPY"):
     chain = pd.read_csv(opt_path, parse_dates=["expiry"])
     market = pd.read_csv(mkt_path, index_col=0).iloc[:, 0]
     return chain, float(market["spot"]), float(market["r"])
+
+def load_history(start, end):
+    """Historique quotidien de SPY, du VIX et du taux 3 mois (^IRX).
+    Téléchargé une seule fois, puis relu depuis le fichier."""
+    path = DATA_DIR / f"history_spy_vix_{start}_{end}.csv"
+    if path.exists():
+        return pd.read_csv(path, index_col=0, parse_dates=True)
+
+    series = {}
+    for name, ticker in {"SPY": "SPY", "VIX": "^VIX", "IRX": "^IRX"}.items():
+        s = yf.Ticker(ticker).history(start=start, end=end)["Close"]
+        s.index = s.index.tz_localize(None)   # on ne garde que la date, sans fuseau horaire
+        series[name] = s
+    hist = pd.DataFrame(series).dropna()
+    hist.to_csv(path)
+    return hist
