@@ -4,3 +4,5 @@ pandas
 matplotlib
 yfinance
 ipykernel
+streamlit
+plotly
